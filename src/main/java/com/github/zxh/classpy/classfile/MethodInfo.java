@@ -6,6 +6,8 @@ import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.constant.ConstantPool;
 import com.github.zxh.classpy.classfile.datatype.Table;
 import com.github.zxh.classpy.classfile.datatype.U2;
+import com.github.zxh.classpy.classfile.datatype.U2CpIndex;
+import com.github.zxh.classpy.classfile.descriptor.MethodDescriptor;
 import com.github.zxh.classpy.classfile.jvm.AccessFlagType;
 
 import java.util.List;
@@ -74,5 +76,14 @@ public class MethodInfo extends ClassFilePart {
                 .findFirst()
                 .orElseThrow(IllegalStateException::new);
         return (List) code.getParts();
+    }
+
+    public MethodDescriptor getMethodDescriptor(ConstantPool constantPool) {
+        U2CpIndex descriptorIndex = (U2CpIndex) getParts()
+                .stream()
+                .filter(p -> "descriptor_index".equals(p.getName()))
+                .findFirst()
+                .get();
+        return new MethodDescriptor(constantPool.getUtf8String(descriptorIndex.getValue()));
     }
 }
