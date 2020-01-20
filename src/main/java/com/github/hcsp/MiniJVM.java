@@ -8,6 +8,7 @@ import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
 import com.github.zxh.classpy.classfile.bytecode.Sipush;
 import com.github.zxh.classpy.classfile.constant.*;
+import com.github.zxh.classpy.classfile.descriptor.MethodDescriptor;
 import com.github.zxh.classpy.common.FilePart;
 
 import java.io.File;
@@ -170,7 +171,8 @@ public class MiniJVM {
     }
 
     private Object[] getLocalVariablesForNewFrame(PCRegister pcRegister, MethodInfo targetMethodInfo) {
-        int paramNumber = MethodInfoUtil.getMethodParamNumber(targetMethodInfo);
+        MethodDescriptor methodDescriptor = targetMethodInfo.getMethodDescriptor(pcRegister.getTopFrameClassConstantPool());
+        int paramNumber = methodDescriptor.getParamTypes().size();
         int localVariableIndex = paramNumber;
         Object[] localVariables = new Object[paramNumber];
         // 从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
@@ -210,29 +212,6 @@ public class MiniJVM {
             return new ClassFileParser().parse(bytes);
         } catch (IOException e) {
             return null;
-        }
-    }
-
-    static class MethodInfoUtil {
-        static Pattern IN_PARENTHESIS_PATTERN = Pattern.compile("(?<=\\().*?(?=\\))");
-
-        static int getMethodParamNumber(MethodInfo targetMethodInfo) {
-            String descriptorIndex = targetMethodInfo.getParts()
-                    .stream()
-                    .filter(x -> x.getName().equals("descriptor_index"))
-                    .findFirst()
-                    .map(FilePart::getDesc).orElse("");
-
-            return getParamNumber(descriptorIndex);
-        }
-
-        private static int getParamNumber(String descriptorIndex) {
-            // 获取括号内的参数个数 #19->(IIIIII)I => IIIIII ,取IIIIII的长度
-            Matcher matcher = IN_PARENTHESIS_PATTERN.matcher(descriptorIndex);
-            while (matcher.find()) {
-                return matcher.group().length();
-            }
-            return 0;
         }
     }
 
