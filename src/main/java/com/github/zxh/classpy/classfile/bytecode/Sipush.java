@@ -14,5 +14,10 @@ public class Sipush extends Instruction {
         short operand = reader.readShort();
         setDesc(getDesc() + " " + operand);
     }
+
+
+    public short getOperand() {
+        return Short.parseShort(getDesc().substring("sipush ".length()));
+    }
     
 }
