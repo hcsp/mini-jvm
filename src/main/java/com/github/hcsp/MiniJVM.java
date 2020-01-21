@@ -6,20 +6,17 @@ import com.github.zxh.classpy.classfile.MethodInfo;
 import com.github.zxh.classpy.classfile.bytecode.Bipush;
 import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
-import com.github.zxh.classpy.classfile.bytecode.Sipush;
-import com.github.zxh.classpy.classfile.constant.*;
-import com.github.zxh.classpy.classfile.descriptor.MethodDescriptor;
-import com.github.zxh.classpy.common.FilePart;
+import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantPool;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.List;
 import java.util.Objects;
 import java.util.Stack;
-import java.util.function.BinaryOperator;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -31,8 +28,6 @@ public class MiniJVM {
 
     public static void main(String[] args) {
         new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
-        new MiniJVM("target/classes", "com.github.hcsp.BranchClass").start();
-        new MiniJVM("target/classes", "com.github.hcsp.RecursiveClass").start();
     }
 
     /**
@@ -69,11 +64,11 @@ public class MiniJVM {
             }
             switch (instruction.getOpcode()) {
                 case getstatic: {
-                    int fieldIndex = ((InstructionCp2) instruction).getTargetFieldIndex();
+                    int fieldIndex = InstructionCp2.class.cast(instruction).getTargetFieldIndex();
                     ConstantPool constantPool = pcRegister.getTopFrameClassConstantPool();
-                    ConstantFieldrefInfo fieldRefInfo = constantPool.getFieldrefInfo(fieldIndex);
-                    ConstantClassInfo classInfo = fieldRefInfo.getClassInfo(constantPool);
-                    ConstantNameAndTypeInfo nameAndTypeInfo = fieldRefInfo.getFieldNameAndTypeInfo(constantPool);
+                    ConstantFieldrefInfo fieldrefInfo = constantPool.getFieldrefInfo(fieldIndex);
+                    ConstantClassInfo classInfo = fieldrefInfo.getClassInfo(constantPool);
+                    ConstantNameAndTypeInfo nameAndTypeInfo = fieldrefInfo.getFieldNameAndTypeInfo(constantPool);
 
                     String className = constantPool.getUtf8String(classInfo.getNameIndex());
                     String fieldName = nameAndTypeInfo.getName(constantPool);
@@ -91,7 +86,10 @@ public class MiniJVM {
                     String methodName = getMethodNameFromInvokeInstruction(instruction, pcRegister.getTopFrameClassConstantPool());
                     ClassFile classFile = loadClassFromClassPath(className);
                     MethodInfo targetMethodInfo = classFile.getMethod(methodName).get(0);
-                    Object[] localVariables = getLocalVariablesForNewFrame(pcRegister, targetMethodInfo);
+
+                    Object[] localVariables = new Object[targetMethodInfo.getMaxLocals()];
+
+                    // TODO 应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
                     StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo, classFile);
                     methodStack.push(newFrame);
                 }
@@ -99,11 +97,6 @@ public class MiniJVM {
                 case bipush: {
                     Bipush bipush = (Bipush) instruction;
                     pcRegister.getTopFrame().pushObjectToOperandStack(bipush.getOperand());
-                }
-                break;
-                case sipush: {
-                    Sipush sipush = (Sipush) instruction;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(sipush.getOperand());
                 }
                 break;
                 case ireturn: {
@@ -117,6 +110,7 @@ public class MiniJVM {
                     String methodName = getMethodNameFromInvokeInstruction(instruction, pcRegister.getTopFrameClassConstantPool());
                     if ("java/io/PrintStream".equals(className) && "println".equals(methodName)) {
                         Object param = pcRegister.getTopFrame().popFromOperandStack();
+                        Object thisObject = pcRegister.getTopFrame().popFromOperandStack();
                         System.out.println(param);
                     } else {
                         throw new IllegalStateException("Not implemented yet!");
@@ -126,73 +120,21 @@ public class MiniJVM {
                 case _return:
                     pcRegister.popFrameFromMethodStack();
                     break;
-                case iload_0:
-                    pcRegister.getTopFrame().pushObjectToOperandStack(pcRegister.getTopFrame().localVariables[0]);
-                    break;
-                case iconst_1:
-                case iconst_2:
-                case iconst_3:
-                case iconst_4:
-                case iconst_5:
-                    int constValue = Integer.parseInt(instruction.getDesc().split("_")[1]);
-                    pcRegister.getTopFrame().pushObjectToOperandStack(constValue);
-                    break;
-                case irem:
-                    caculate(pcRegister, (a, b) -> a % b);
-                    break;
-                case iadd:
-                    caculate(pcRegister, Integer::sum);
-                    break;
-                case isub:
-                    caculate(pcRegister, (a, b) -> a - b);
-                    break;
-                case imul:
-                    caculate(pcRegister, (a, b) -> a * b);
-                    break;
-                case idiv:
-                    caculate(pcRegister, (a, b) -> a / b);
-                    break;
-                case ifne: {
-                    if ((Integer) pcRegister.getTopFrame().popFromOperandStack() != 0) {
-                        pcRegister.getTopFrame().jumpToAimInstruction(instruction);
-                    }
-                }
-                break;
                 default:
                     throw new IllegalStateException("Opcode " + instruction + " not implemented yet!");
             }
         }
     }
 
-    private void caculate(PCRegister pcRegister, BinaryOperator<Integer> operator) {
-        Integer operand1 = (Integer) pcRegister.getTopFrame().popFromOperandStack();
-        Integer operand2 = (Integer) pcRegister.getTopFrame().popFromOperandStack();
-        pcRegister.getTopFrame().pushObjectToOperandStack(operator.apply(operand2, operand1));
-    }
-
-    private Object[] getLocalVariablesForNewFrame(PCRegister pcRegister, MethodInfo targetMethodInfo) {
-        MethodDescriptor methodDescriptor = targetMethodInfo.getMethodDescriptor(pcRegister.getTopFrameClassConstantPool());
-        int paramNumber = methodDescriptor.getParamTypes().size();
-        int localVariableIndex = paramNumber;
-        Object[] localVariables = new Object[paramNumber];
-        // 从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
-        while (localVariableIndex > 0) {
-            localVariables[localVariableIndex - 1] = pcRegister.getTopFrame().popFromOperandStack();
-            localVariableIndex--;
-        }
-        return localVariables;
-    }
-
-
     private String getClassNameFromInvokeInstruction(Instruction instruction, ConstantPool constantPool) {
-        int methodIndex = ((InstructionCp2) instruction).getTargetMethodIndex();
-        ConstantMethodrefInfo methodRefInfo = constantPool.getMethodrefInfo(methodIndex);
-        ConstantClassInfo classInfo = methodRefInfo.getClassInfo(constantPool);
+        int methodIndex = InstructionCp2.class.cast(instruction).getTargetMethodIndex();
+        ConstantMethodrefInfo methodrefInfo = constantPool.getMethodrefInfo(methodIndex);
+        ConstantClassInfo classInfo = methodrefInfo.getClassInfo(constantPool);
         return constantPool.getUtf8String(classInfo.getNameIndex());
     }
 
     private String getMethodNameFromInvokeInstruction(Instruction instruction, ConstantPool constantPool) {
-        int methodIndex = ((InstructionCp2) instruction).getTargetMethodIndex();
+        int methodIndex = InstructionCp2.class.cast(instruction).getTargetMethodIndex();
         ConstantMethodrefInfo methodrefInfo = constantPool.getMethodrefInfo(methodIndex);
         ConstantClassInfo classInfo = methodrefInfo.getClassInfo(constantPool);
         return methodrefInfo.getMethodNameAndType(constantPool).getName(constantPool);
@@ -233,9 +175,10 @@ public class MiniJVM {
         public Instruction getNextInstruction() {
             if (methodStack.isEmpty()) {
                 return null;
+            } else {
+                StackFrame frameAtTop = methodStack.peek();
+                return frameAtTop.getNextInstruction();
             }
-            StackFrame frameAtTop = methodStack.peek();
-            return frameAtTop.getNextInstruction();
         }
 
         public void popFrameFromMethodStack() {
@@ -253,19 +196,6 @@ public class MiniJVM {
 
         public Instruction getNextInstruction() {
             return methodInfo.getCode().get(currentInstructionIndex++);
-        }
-
-        public void jumpToAimInstruction(Instruction ifConditionInstruction) {
-            List<Instruction> instructions = methodInfo.getCode();
-            String[] descArr = ifConditionInstruction.getDesc().split(" ");
-            int aimLineNumber = Integer.parseInt(descArr[descArr.length - 1]);
-            Instruction aimInstruction = instructions
-                    .stream()
-                    .filter(x -> x.getPc() == aimLineNumber)
-                    .findFirst()
-                    .orElseThrow(RuntimeException::new);
-
-            currentInstructionIndex = instructions.indexOf(aimInstruction);
         }
 
         public ClassFile getClassFile() {
