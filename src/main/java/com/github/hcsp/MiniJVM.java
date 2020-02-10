@@ -12,7 +12,6 @@ import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantPool;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
