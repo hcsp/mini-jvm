@@ -1,39 +1,39 @@
 package com.github.hcsp;
 
+
 import com.github.zxh.classpy.classfile.ClassFile;
 import com.github.zxh.classpy.classfile.ClassFileParser;
 import com.github.zxh.classpy.classfile.MethodInfo;
 import com.github.zxh.classpy.classfile.bytecode.Bipush;
 import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
-import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
-import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
-import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
-import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
-import com.github.zxh.classpy.classfile.constant.ConstantPool;
+import com.github.zxh.classpy.classfile.bytecode.Sipush;
+import com.github.zxh.classpy.classfile.constant.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Stack;
-import java.util.stream.Stream;
 
 /**
  * 这是一个用来学习的JVM
  */
 public class MiniJVM {
     private String mainClass;
+    //-classpath /home/xxx:/home/xxx
     private String[] classPathEntries;
 
     public static void main(String[] args) {
-        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
+        new MiniJVM("target/classes", "com.github.hcsp.RecursiveClass").start();
     }
 
     /**
-     * 创建一个迷你JVM，使用指定的classpath和main class
-     *
-     * @param classPath 启动时的classpath，使用{@link java.io.File#pathSeparator}的分隔符，我们支持文件夹
+     * 创建一个迷你JVM 使用指定的classpath和mainClass
+     * @param mainClass
+     * @param classPath 启动时的classPath
      */
     public MiniJVM(String classPath, String mainClass) {
         this.mainClass = mainClass;
@@ -41,107 +41,175 @@ public class MiniJVM {
     }
 
     /**
-     * 启动并运行该虚拟机
+     * 启动运行虚拟机
      */
     public void start() {
         ClassFile mainClassFile = loadClassFromClassPath(mainClass);
-
         MethodInfo methodInfo = mainClassFile.getMethod("main").get(0);
-
         Stack<StackFrame> methodStack = new Stack<>();
-
         Object[] localVariablesForMainStackFrame = new Object[methodInfo.getMaxStack()];
         localVariablesForMainStackFrame[0] = null;
-
-        methodStack.push(new StackFrame(localVariablesForMainStackFrame, methodInfo, mainClassFile));
-
+        StackFrame mainStackFrame = new StackFrame(localVariablesForMainStackFrame, methodInfo);
+        methodStack.push(mainStackFrame);
         PCRegister pcRegister = new PCRegister(methodStack);
-
+        ConstantPool constantPool = mainClassFile.getConstantPool();
         while (true) {
             Instruction instruction = pcRegister.getNextInstruction();
             if (instruction == null) {
                 break;
             }
             switch (instruction.getOpcode()) {
+                case imul:{
+                    Integer object1 = (int) pcRegister.getTopStackFrame().popFromOperandStack();
+                    Integer object2 = (int) pcRegister.getTopStackFrame().popFromOperandStack();
+                    Integer object = object2 * object1;
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(object);
+                }
+                break;
+                case isub:{
+                    Integer object1 = (int) pcRegister.getTopStackFrame().popFromOperandStack();
+                    Integer object2 = (int) pcRegister.getTopStackFrame().popFromOperandStack();
+                    Integer object = object2 - object1;
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(object);
+                }
+                break;
+                case sipush: {
+                    Sipush sipush = (Sipush) instruction;
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(sipush.getOperand());
+                }
+                break;
+                case ifne: {
+                    Integer object = (int) pcRegister.getTopStackFrame().popFromOperandStack();
+                    if (object != 0) {
+                        pcRegister.getTopStackFrame().jumpToAimInstruction(instruction);
+                    }
+                }
+                break;
+                case irem: {
+                    Integer object1 = (int) pcRegister.getTopStackFrame().popFromOperandStack();
+                    Integer object2 = (int) pcRegister.getTopStackFrame().popFromOperandStack();
+                    Integer object = object2 % object1;
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(object);
+                }
+                break;
+                case iconst_1: {
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(1);
+                }
+                break;
+                case iconst_2: {
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(2);
+                }
+                break;
+                case iconst_3: {
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(3);
+                }
+                break;
+                case iconst_4: {
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(4);
+                }
+                break;
+                case iconst_5: {
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(5);
+                }
+                break;
+                case iload_0: {
+                    Object value = pcRegister.getTopStackFrame().getLocalVariables()[0];
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(value);
+                }
+                break;
                 case getstatic: {
-                    int fieldIndex = InstructionCp2.class.cast(instruction).getTargetFieldIndex();
-                    ConstantPool constantPool = pcRegister.getTopFrameClassConstantPool();
-                    ConstantFieldrefInfo fieldrefInfo = constantPool.getFieldrefInfo(fieldIndex);
-                    ConstantClassInfo classInfo = fieldrefInfo.getClassInfo(constantPool);
-                    ConstantNameAndTypeInfo nameAndTypeInfo = fieldrefInfo.getFieldNameAndTypeInfo(constantPool);
-
-                    String className = constantPool.getUtf8String(classInfo.getNameIndex());
-                    String fieldName = nameAndTypeInfo.getName(constantPool);
-
+                    int fieldIndex = ((InstructionCp2) instruction).getTargetFieldIndex();
+                    String className = getClassNameFromInvokeInstructionByField(fieldIndex, constantPool);
+                    String fieldName = getFieldNameFromInvokeInstruction(fieldIndex, constantPool);
                     if ("java/lang/System".equals(className) && "out".equals(fieldName)) {
                         Object field = System.out;
-                        pcRegister.getTopFrame().pushObjectToOperandStack(field);
+                        pcRegister.getTopStackFrame().pushObjectToOperandStack(field);
                     } else {
                         throw new IllegalStateException("Not implemented yet!");
                     }
                 }
                 break;
                 case invokestatic: {
-                    String className = getClassNameFromInvokeInstruction(instruction, pcRegister.getTopFrameClassConstantPool());
-                    String methodName = getMethodNameFromInvokeInstruction(instruction, pcRegister.getTopFrameClassConstantPool());
+                    int index = ((InstructionCp2) instruction).getTargetMethodIndex();
+                    String className = getClassNameFromInvokeInstructionByMethod(index, constantPool);
+                    String methodName = getMethodNameFromInvokeInstruction(index, constantPool);
                     ClassFile classFile = loadClassFromClassPath(className);
                     MethodInfo targetMethodInfo = classFile.getMethod(methodName).get(0);
-
-                    Object[] localVariables = new Object[targetMethodInfo.getMaxLocals()];
-
-                    // TODO 应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
-                    StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo, classFile);
+                    Object[] localVariables = getLocalVariables(pcRegister, targetMethodInfo);
+                    StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo);
                     methodStack.push(newFrame);
                 }
                 break;
                 case bipush: {
                     Bipush bipush = (Bipush) instruction;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(bipush.getOperand());
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(bipush.getOperand());
                 }
                 break;
                 case ireturn: {
-                    Object returnValue = pcRegister.getTopFrame().popFromOperandStack();
+                    Object returnVal = pcRegister.getTopStackFrame().popFromOperandStack();
                     pcRegister.popFrameFromMethodStack();
-                    pcRegister.getTopFrame().pushObjectToOperandStack(returnValue);
+                    pcRegister.getTopStackFrame().pushObjectToOperandStack(returnVal);
                 }
                 break;
                 case invokevirtual: {
-                    String className = getClassNameFromInvokeInstruction(instruction, pcRegister.getTopFrameClassConstantPool());
-                    String methodName = getMethodNameFromInvokeInstruction(instruction, pcRegister.getTopFrameClassConstantPool());
+                    int index = ((InstructionCp2) instruction).getTargetMethodIndex();
+                    String className = getClassNameFromInvokeInstructionByMethod(index, constantPool);
+                    String methodName = getMethodNameFromInvokeInstruction(index, constantPool);
                     if ("java/io/PrintStream".equals(className) && "println".equals(methodName)) {
-                        Object param = pcRegister.getTopFrame().popFromOperandStack();
-                        Object thisObject = pcRegister.getTopFrame().popFromOperandStack();
+                        Object param = pcRegister.getTopStackFrame().popFromOperandStack();
+                        pcRegister.getTopStackFrame().popFromOperandStack();//把this弹出
                         System.out.println(param);
                     } else {
                         throw new IllegalStateException("Not implemented yet!");
                     }
                 }
                 break;
-                case _return:
+                case _return: {
                     pcRegister.popFrameFromMethodStack();
-                    break;
+                }
+                break;
                 default:
-                    throw new IllegalStateException("Opcode " + instruction + " not implemented yet!");
+                    throw new IllegalStateException("Opcode " + instruction.getOpcode() + " not implemented yet!");
             }
         }
     }
 
-    private String getClassNameFromInvokeInstruction(Instruction instruction, ConstantPool constantPool) {
-        int methodIndex = InstructionCp2.class.cast(instruction).getTargetMethodIndex();
-        ConstantMethodrefInfo methodrefInfo = constantPool.getMethodrefInfo(methodIndex);
+    private Object[] getLocalVariables(PCRegister pcRegister, MethodInfo targetMethodInfo) {
+        int localVariablesLength = targetMethodInfo.getMaxLocals();
+        Object[] localVariables = new Object[localVariablesLength];
+        for (int i = 0; i < localVariablesLength; i++) {
+            localVariables[i] = pcRegister.getTopStackFrame().popFromOperandStack();
+        }
+        return localVariables;
+    }
+
+    private String getMethodNameFromInvokeInstruction(int index, ConstantPool constantPool) {
+        ConstantMethodrefInfo methodrefInfo = constantPool.getMethodrefInfo(index);
+        ConstantNameAndTypeInfo methodNameAndType = methodrefInfo.getMethodNameAndType(constantPool);
+        return methodNameAndType.getName(constantPool);
+    }
+
+    private String getFieldNameFromInvokeInstruction(int index, ConstantPool constantPool) {
+        ConstantFieldrefInfo fieldrefInfo = constantPool.getFieldrefInfo(index);
+        ConstantNameAndTypeInfo fieldNameAndTypeInfo = fieldrefInfo.getFieldNameAndTypeInfo(constantPool);
+        return fieldNameAndTypeInfo.getName(constantPool);
+    }
+
+    private String getClassNameFromInvokeInstructionByField(int index, ConstantPool constantPool) {
+        ConstantFieldrefInfo fieldrefInfo = constantPool.getFieldrefInfo(index);
+        ConstantClassInfo classInfo = fieldrefInfo.getClassInfo(constantPool);
+        return constantPool.getUtf8String(classInfo.getNameIndex());
+    }
+
+    private String getClassNameFromInvokeInstructionByMethod(int index, ConstantPool constantPool) {
+        ConstantMethodrefInfo methodrefInfo = constantPool.getMethodrefInfo(index);
         ConstantClassInfo classInfo = methodrefInfo.getClassInfo(constantPool);
         return constantPool.getUtf8String(classInfo.getNameIndex());
     }
 
-    private String getMethodNameFromInvokeInstruction(Instruction instruction, ConstantPool constantPool) {
-        int methodIndex = InstructionCp2.class.cast(instruction).getTargetMethodIndex();
-        ConstantMethodrefInfo methodrefInfo = constantPool.getMethodrefInfo(methodIndex);
-        ConstantClassInfo classInfo = methodrefInfo.getClassInfo(constantPool);
-        return methodrefInfo.getMethodNameAndType(constantPool).getName(constantPool);
-    }
 
     private ClassFile loadClassFromClassPath(String fqcn) {
-        return Stream.of(classPathEntries)
+        return Arrays.stream(classPathEntries)
                 .map(entry -> tryLoad(entry, fqcn))
                 .filter(Objects::nonNull)
                 .findFirst()
@@ -150,62 +218,52 @@ public class MiniJVM {
 
     private ClassFile tryLoad(String entry, String fqcn) {
         try {
-            byte[] bytes = Files.readAllBytes(new File(entry, fqcn.replace('.', '/') + ".class").toPath());
+            byte[] bytes = Files.readAllBytes(new File(entry, fqcn.replace(".", "/") + ".class").toPath());
             return new ClassFileParser().parse(bytes);
         } catch (IOException e) {
             return null;
         }
     }
 
-    static class PCRegister {
-        Stack<StackFrame> methodStack;
+    class PCRegister {
+        private Stack<StackFrame> methodStack;
 
         public PCRegister(Stack<StackFrame> methodStack) {
             this.methodStack = methodStack;
         }
 
-        public StackFrame getTopFrame() {
+        public StackFrame getTopStackFrame() {
             return methodStack.peek();
         }
 
-        public ConstantPool getTopFrameClassConstantPool() {
-            return getTopFrame().getClassFile().getConstantPool();
-        }
-
-        public Instruction getNextInstruction() {
+        private Instruction getNextInstruction() {
             if (methodStack.isEmpty()) {
                 return null;
             } else {
-                StackFrame frameAtTop = methodStack.peek();
-                return frameAtTop.getNextInstruction();
+                StackFrame topStackFrame = methodStack.peek();
+                return topStackFrame.getNextInstruction();
             }
         }
 
         public void popFrameFromMethodStack() {
             methodStack.pop();
         }
+
     }
 
-    static class StackFrame {
+    class StackFrame {
         Object[] localVariables;
         Stack<Object> operandStack = new Stack<>();
         MethodInfo methodInfo;
-        ClassFile classFile;
-
-        int currentInstructionIndex;
+        int curInstructionIndex;//当前字节码指令执行到哪里的索引
 
         public Instruction getNextInstruction() {
-            return methodInfo.getCode().get(currentInstructionIndex++);
+            return methodInfo.getCode().get(curInstructionIndex++);
         }
 
-        public ClassFile getClassFile() {
-            return classFile;
-        }
-
-        public StackFrame(Object[] localVariables, MethodInfo methodInfo, ClassFile classFile) {
+        public StackFrame(Object[] localVariables, MethodInfo methodInfo) {
             this.localVariables = localVariables;
             this.methodInfo = methodInfo;
-            this.classFile = classFile;
         }
 
         public void pushObjectToOperandStack(Object object) {
@@ -214,6 +272,21 @@ public class MiniJVM {
 
         public Object popFromOperandStack() {
             return operandStack.pop();
+        }
+
+        public Object[] getLocalVariables() {
+            return localVariables;
+        }
+
+        public void jumpToAimInstruction(Instruction instruction) {
+            List<Instruction> instructions = methodInfo.getCode();
+            String[] descArr = instruction.getDesc().split(" ");
+            int aimLineNumber = Integer.parseInt(descArr[descArr.length - 1]);
+            Instruction aimInstruction = instructions.stream()
+                    .filter(item -> item.getPc() == aimLineNumber)
+                    .findFirst()
+                    .orElseThrow(RuntimeException::new);
+            curInstructionIndex = instructions.indexOf(aimInstruction);
         }
     }
 }
