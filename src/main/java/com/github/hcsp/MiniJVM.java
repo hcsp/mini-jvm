@@ -6,8 +6,11 @@ import com.github.zxh.classpy.classfile.MethodInfo;
 import com.github.zxh.classpy.classfile.bytecode.Bipush;
 import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
-import com.github.zxh.classpy.classfile.bytecode.Sipush;
-import com.github.zxh.classpy.classfile.constant.*;
+import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantPool;
 
 import java.io.File;
 import java.io.IOException;
@@ -24,7 +27,7 @@ public class MiniJVM {
     private String[] classPathEntries;
 
     public static void main(String[] args) {
-        new MiniJVM("target/classes", "com.github.hcsp.RecursiveClass").start();
+        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
     }
 
     /**
@@ -48,6 +51,8 @@ public class MiniJVM {
         Stack<StackFrame> methodStack = new Stack<>();
 
         Object[] localVariablesForMainStackFrame = new Object[methodInfo.getMaxStack()];
+        localVariablesForMainStackFrame[0] = null;
+
         methodStack.push(new StackFrame(localVariablesForMainStackFrame, methodInfo, mainClassFile));
 
         PCRegister pcRegister = new PCRegister(methodStack);
@@ -81,11 +86,9 @@ public class MiniJVM {
                     String methodName = getMethodNameFromInvokeInstruction(instruction, pcRegister.getTopFrameClassConstantPool());
                     ClassFile classFile = loadClassFromClassPath(className);
                     MethodInfo targetMethodInfo = classFile.getMethod(methodName).get(0);
+
                     Object[] localVariables = new Object[targetMethodInfo.getMaxLocals()];
 
-                    for (int i = 0; i < targetMethodInfo.getMaxLocals(); i++) {
-                        localVariables[i] = pcRegister.getTopFrame().popFromOperandStack();
-                    }
                     // TODO 应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
                     StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo, classFile);
                     methodStack.push(newFrame);
@@ -114,62 +117,9 @@ public class MiniJVM {
                     }
                 }
                 break;
-                case iconst_2: {
-                    pcRegister.getTopFrame().pushObjectToOperandStack(2);
-                }
-                break;
-                case iconst_1: {
-                    pcRegister.getTopFrame().pushObjectToOperandStack(1);
-                }
-                break;
-                case iconst_5: {
-                    pcRegister.getTopFrame().pushObjectToOperandStack(5);
-                }
-                break;
-                case irem: {
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int result = value1 - (value1 / value2) * value2;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
-                }
-                break;
-                case ifne: {
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    if (value1 != 0) {
-                        pcRegister.getTopFrame().getNextInstruction();
-                        pcRegister.getTopFrame().getNextInstruction();
-                    }
-
-                }
-                break;
-                case sipush: {
-                    Sipush sipush = (Sipush) instruction;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(sipush.getOperand());
-                }
-                break;
-                case iload_0: {
-                    Object[] localVariables = pcRegister.getTopFrame().localVariables;
-
-                    pcRegister.getTopFrame().pushObjectToOperandStack(localVariables[0]);
-                }
-                break;
                 case _return:
                     pcRegister.popFrameFromMethodStack();
                     break;
-                case imul: {
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int result = value1 * value2;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
-                }
-                break;
-                case isub: {
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int result = value2-value1;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
-                }
-                break;
                 default:
                     throw new IllegalStateException("Opcode " + instruction + " not implemented yet!");
             }
@@ -186,6 +136,7 @@ public class MiniJVM {
     private String getMethodNameFromInvokeInstruction(Instruction instruction, ConstantPool constantPool) {
         int methodIndex = InstructionCp2.class.cast(instruction).getTargetMethodIndex();
         ConstantMethodrefInfo methodrefInfo = constantPool.getMethodrefInfo(methodIndex);
+        ConstantClassInfo classInfo = methodrefInfo.getClassInfo(constantPool);
         return methodrefInfo.getMethodNameAndType(constantPool).getName(constantPool);
     }
 
@@ -263,10 +214,6 @@ public class MiniJVM {
 
         public Object popFromOperandStack() {
             return operandStack.pop();
-        }
-
-        public Object peekFromOperandStack(){
-            return operandStack.peek();
         }
     }
 }
