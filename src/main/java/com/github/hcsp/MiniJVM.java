@@ -6,15 +6,19 @@ import com.github.zxh.classpy.classfile.MethodInfo;
 import com.github.zxh.classpy.classfile.bytecode.Bipush;
 import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
+import com.github.zxh.classpy.classfile.bytecode.Sipush;
 import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantPool;
+import com.sun.org.apache.bcel.internal.generic.IFNE;
+import com.sun.xml.internal.bind.v2.runtime.output.Pcdata;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Objects;
 import java.util.Stack;
 import java.util.stream.Stream;
@@ -27,7 +31,7 @@ public class MiniJVM {
     private String[] classPathEntries;
 
     public static void main(String[] args) {
-        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
+        new MiniJVM("target/classes", "com.github.hcsp.RecursiveClass").start();
     }
 
     /**
@@ -90,6 +94,10 @@ public class MiniJVM {
                     Object[] localVariables = new Object[targetMethodInfo.getMaxLocals()];
 
                     // TODO 应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
+                    String methodDesc = targetMethodInfo.getParts().get(2).getDesc();
+                    if (methodDesc.contains("(I)")) {
+                        localVariables[0] = pcRegister.getTopFrame().operandStack.pop();
+                    }
                     StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo, classFile);
                     methodStack.push(newFrame);
                 }
@@ -120,10 +128,72 @@ public class MiniJVM {
                 case _return:
                     pcRegister.popFrameFromMethodStack();
                     break;
+                case iload_0:
+                    Object firstVar = pcRegister.getTopFrame().localVariables[0];
+                    pcRegister.getTopFrame().pushObjectToOperandStack(firstVar);
+                    break;
+                case ifne:
+                    int topNum = (int) pcRegister.getTopFrame().operandStack.peek();
+                    if (topNum != 0) {
+                        pcRegister.getTopFrame().setCurrentInstructionIndexByIfne(instruction);
+                    }
+                    break;
+                case sipush:
+                    String siPushDesc = instruction.getDesc();
+                    pcRegister.getTopFrame().operandStack.push(siPushDesc.split(" ")[1]);
+                    break;
+                case iconst_5:
+                case iconst_1:
+                case iconst_2:
+                    setConstVal(pcRegister, instruction);
+                    break;
+                case isub:
+                    calculation2NumAndSetOperandStack(pcRegister, "-");
+                    break;
+                case irem:
+                    calculation2NumAndSetOperandStack(pcRegister, "%");
+                    break;
+                case imul:
+                    calculation2NumAndSetOperandStack(pcRegister, "*");
+                    break;
                 default:
                     throw new IllegalStateException("Opcode " + instruction + " not implemented yet!");
             }
         }
+    }
+
+    private void calculation2NumAndSetOperandStack(PCRegister pcRegister, String operator) {
+        int topNum = (int) pcRegister.getTopFrame().operandStack.pop();
+        int footNum = (int) pcRegister.getTopFrame().operandStack.pop();
+        int result;
+        switch (operator) {
+            case "+":
+                result = topNum + footNum;
+                break;
+            case "-":
+                result = footNum - topNum;
+                break;
+            case "*":
+                result = footNum * topNum;
+                break;
+            case "/":
+                result = footNum / topNum;
+                break;
+            case "%":
+                result = footNum % topNum;
+                break;
+            default:
+                throw new IllegalArgumentException("操作符非法：" + operator);
+        }
+        pcRegister.getTopFrame().operandStack.push(result);
+    }
+
+    private void setConstVal(PCRegister pcRegister, Instruction instruction) {
+        pcRegister.getTopFrame().operandStack.push(Integer.valueOf(getConstVal(instruction)));
+    }
+
+    private String getConstVal(Instruction instruction) {
+        return instruction.getDesc().split("_")[1];
     }
 
     private String getClassNameFromInvokeInstruction(Instruction instruction, ConstantPool constantPool) {
@@ -214,6 +284,19 @@ public class MiniJVM {
 
         public Object popFromOperandStack() {
             return operandStack.pop();
+        }
+
+        public void setCurrentInstructionIndexByIfne(Instruction ifneInstruction) {
+            String ifneDesc = ifneInstruction.getDesc();
+            String[] descArr = ifneDesc.split(" ");
+            int target = Integer.parseInt(descArr[descArr.length - 1]);
+            List<Instruction> instructions = methodInfo.getCode();
+            for (Instruction instruction : instructions) {
+                if (instruction.getPc() == target) {
+                    currentInstructionIndex = instructions.indexOf(instruction);
+                    break;
+                }
+            }
         }
     }
 }
