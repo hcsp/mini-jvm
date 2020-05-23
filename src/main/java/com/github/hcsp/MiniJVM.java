@@ -6,14 +6,11 @@ import com.github.zxh.classpy.classfile.MethodInfo;
 import com.github.zxh.classpy.classfile.bytecode.Bipush;
 import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
-import com.github.zxh.classpy.classfile.bytecode.Sipush;
 import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantPool;
-import com.sun.org.apache.bcel.internal.generic.IFNE;
-import com.sun.xml.internal.bind.v2.runtime.output.Pcdata;
 
 import java.io.File;
 import java.io.IOException;
