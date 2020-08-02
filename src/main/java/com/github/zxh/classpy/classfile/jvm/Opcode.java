@@ -3,6 +3,7 @@ package com.github.zxh.classpy.classfile.jvm;
 import com.github.zxh.classpy.common.ParseException;
 
 /**
+ * https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-6.html
  * https://zhuanlan.zhihu.com/p/45050364
  */
 public enum Opcode {
@@ -16,7 +17,7 @@ public enum Opcode {
     iconst_2(0x05, 0),//将2号常量加载到操作数栈
     iconst_3(0x06, 0),
     iconst_4(0x07, 0),
-    iconst_5(0x08, 0),
+    iconst_5(0x08, 0),//
     lconst_0(0x09, 0),
     lconst_1(0x0a, 0),
     fconst_0(0x0b, 0),
@@ -112,11 +113,12 @@ public enum Opcode {
     ladd(0x61, 0),
     fadd(0x62, 0),
     dadd(0x63, 0),
-    isub(0x64, 0),
+    isub(0x64, 0),//value1和value2都必须为int类型。 从操作数堆栈中弹出值。 int结果为value1-value2。 结果被压入操作数堆栈。
+    // 对于int减法，a-b产生与a +（-b）相同的结果。 对于int值，从零减等于负数。
     lsub(0x65, 0),
     fsub(0x66, 0),
     dsub(0x67, 0),
-    imul(0x68, 0),
+    imul(0x68, 0),//value1和value2都必须为int类型。 从操作数堆栈中弹出值。 int结果为value1 * value2。 结果被压入操作数堆栈。
     lmul(0x69, 0),
     fmul(0x6a, 0),
     dmul(0x6b, 0),

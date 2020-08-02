@@ -24,8 +24,8 @@ public class MiniJVM {
     private String[] classPathEntries;
 
     public static void main(String[] args) {
-//        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
-//        new MiniJVM("target/classes", "com.github.hcsp.BranchClass").start();
+        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
+        new MiniJVM("target/classes", "com.github.hcsp.BranchClass").start();
         new MiniJVM("target/classes", "com.github.hcsp.RecursiveClass").start();
     }
 
@@ -141,8 +141,7 @@ public class MiniJVM {
                     System.out.println();
                     break;
                 case iconst_2: {//将变量2压入操作数栈
-                    StackFrame topFrame = pcRegister.getTopFrame();
-                    topFrame.pushObjectToOperandStack(2);
+                    pcRegister.getTopFrame().pushObjectToOperandStack(2);
                 }
                 break;
                 case irem: {//value1和value2都必须为int类型。 从操作数堆栈中弹出值。 int结果为value1-（value1 / value2）* value2。 结果被压入操作数堆栈。
@@ -178,6 +177,30 @@ public class MiniJVM {
                     StackFrame topFrame = pcRegister.getTopFrame();
                     Integer returnValue = Integer.parseInt(instruction.getDesc().split(" ")[1]);
                     topFrame.pushObjectToOperandStack(returnValue);
+                }
+                break;
+                case iconst_5: {
+                    pcRegister.getTopFrame().pushObjectToOperandStack(5);
+                }
+                break;
+                case iconst_1: {//将常量1加载到操作数栈
+                    pcRegister.getTopFrame().pushObjectToOperandStack(1);
+                }
+                break;
+                case isub: {//value1和value2都必须为int类型。 从操作数堆栈中弹出值。 int结果为value1-value2。 结果被压入操作数堆栈
+                    StackFrame topFrame = pcRegister.getTopFrame();
+                    Integer value2 = (Integer) topFrame.popFromOperandStack();
+                    Integer value1 = (Integer) topFrame.popFromOperandStack();
+                    int result = value1 - value2;
+                    topFrame.pushObjectToOperandStack(result);
+                }
+                break;
+                case imul: {//value1和value2都必须为int类型。 从操作数堆栈中弹出值。 int结果为value1 * value2。 结果被压入操作数堆栈。
+                    StackFrame topFrame = pcRegister.getTopFrame();
+                    Integer value2 = (Integer) topFrame.popFromOperandStack();
+                    Integer value1 = (Integer) topFrame.popFromOperandStack();
+                    int result = value1 * value2;
+                    topFrame.pushObjectToOperandStack(result);
                 }
                 break;
                 case _return:
