@@ -6,15 +6,12 @@ import com.github.zxh.classpy.classfile.MethodInfo;
 import com.github.zxh.classpy.classfile.bytecode.Bipush;
 import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
-import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
-import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
-import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
-import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
-import com.github.zxh.classpy.classfile.constant.ConstantPool;
+import com.github.zxh.classpy.classfile.constant.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Objects;
 import java.util.Stack;
 import java.util.stream.Stream;
@@ -27,7 +24,9 @@ public class MiniJVM {
     private String[] classPathEntries;
 
     public static void main(String[] args) {
-        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
+//        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
+//        new MiniJVM("target/classes", "com.github.hcsp.BranchClass").start();
+        new MiniJVM("target/classes", "com.github.hcsp.RecursiveClass").start();
     }
 
     /**
@@ -46,16 +45,16 @@ public class MiniJVM {
     public void start() {
         ClassFile mainClassFile = loadClassFromClassPath(mainClass);
 
-        MethodInfo methodInfo = mainClassFile.getMethod("main").get(0);
+        MethodInfo mainMethodInfo = mainClassFile.getMethod("main").get(0);
 
-        Stack<StackFrame> methodStack = new Stack<>();
+        Stack<StackFrame> mainMethodStack = new Stack<>();
 
-        Object[] localVariablesForMainStackFrame = new Object[methodInfo.getMaxStack()];
+        Object[] localVariablesForMainStackFrame = new Object[mainMethodInfo.getMaxStack()];
         localVariablesForMainStackFrame[0] = null;
 
-        methodStack.push(new StackFrame(localVariablesForMainStackFrame, methodInfo, mainClassFile));
+        mainMethodStack.push(new StackFrame(localVariablesForMainStackFrame, mainMethodInfo, mainClassFile));
 
-        PCRegister pcRegister = new PCRegister(methodStack);
+        PCRegister pcRegister = new PCRegister(mainMethodStack);
 
         while (true) {
             Instruction instruction = pcRegister.getNextInstruction();
@@ -87,11 +86,19 @@ public class MiniJVM {
                     ClassFile classFile = loadClassFromClassPath(className);
                     MethodInfo targetMethodInfo = classFile.getMethod(methodName).get(0);
 
+                    //targetMethodInfo.getMaxLocals()用于获取实际传参的长度
                     Object[] localVariables = new Object[targetMethodInfo.getMaxLocals()];
+                    //targetMethodInfo.getParts().get(2).getDesc()
+                    if (targetMethodInfo.getMaxLocals() > 0) {
+                        //分析方法的参数,从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
+                        for (int i = 0; i < targetMethodInfo.getMaxLocals(); i++) {
+                            Object param = pcRegister.getTopFrame().popFromOperandStack();//从栈上弹出一个需要的变量值
+                            localVariables[i] = param;
+                        }
+                    }
 
-                    // TODO 应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
                     StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo, classFile);
-                    methodStack.push(newFrame);
+                    mainMethodStack.push(newFrame);
                 }
                 break;
                 case bipush: {
@@ -115,6 +122,62 @@ public class MiniJVM {
                     } else {
                         throw new IllegalStateException("Not implemented yet!");
                     }
+                }
+                break;
+                case iload_0: {//从当前栈帧局部变量表中0号位置取int类型的数值加载到操作数栈
+                    StackFrame topFrame = pcRegister.getTopFrame();
+                    Object intValue = topFrame.getLocalVariables()[0];
+                    /*if (Integer.class.isInstance(intValue)) {
+                    //暂且忽略类型检查
+                        throw new IllegalStateException(intValue + " is not int value!");
+                    }*/
+                    topFrame.pushObjectToOperandStack(intValue);
+                }
+                break;
+                case ldc://将一个常量加载到操作数栈
+                    System.out.println();
+                    break;
+                case aconst_null://将null加载到操作数栈
+                    System.out.println();
+                    break;
+                case iconst_2: {//将变量2压入操作数栈
+                    StackFrame topFrame = pcRegister.getTopFrame();
+                    topFrame.pushObjectToOperandStack(2);
+                }
+                break;
+                case irem: {//value1和value2都必须为int类型。 从操作数堆栈中弹出值。 int结果为value1-（value1 / value2）* value2。 结果被压入操作数堆栈。
+                    StackFrame topFrame = pcRegister.getTopFrame();
+                    Integer value2 = (Integer) topFrame.popFromOperandStack();
+                    Integer value1 = (Integer) topFrame.popFromOperandStack();
+                    Integer result = value1 - (value1 / value2) * value2;
+                    topFrame.pushObjectToOperandStack(result);
+                }
+                break;
+                case ifne: {//if条件分支
+                    StackFrame topFrame = pcRegister.getTopFrame();
+                    MethodInfo methodInfo = topFrame.getMethodInfo();
+                    List<Instruction> code = methodInfo.getCode();
+//                    List<FilePart> parts = methodInfo.getParts();
+                    int ifParam = (int) topFrame.popFromOperandStack();
+
+                    //此处相等执行下一条指令即可,若不等则调转到else对应的指令位置
+                    if (ifParam != 0) {//todo ifne指令的比较值固定是0么?
+                        //从instruction.getDesc获取到欲调转的指令号,使用空格进行分割
+                        int pc = Integer.parseInt(instruction.getDesc().split(" ")[1]);
+                        for (int i = 0; i < code.size(); i++) {
+                            if (pc == code.get(i).getPc()) {
+                                topFrame.setCurrentInstructionIndex(i);
+                                break;
+                            }
+                        }
+                    }
+                }
+                break;
+                case sipush: {//无符号立即数byte1和byte2的值组合成一个中间short，其中short的值为（byte1 << 8）| 字节2。 然后将中间值符号扩展为int值。 该值被压入操作数堆栈。
+                    pcRegister.popFrameFromMethodStack();
+                    StackFrame topFrame = pcRegister.getTopFrame();
+                    Integer returnValue = Integer.parseInt(instruction.getDesc().split(" ")[1]);
+                    topFrame.pushObjectToOperandStack(returnValue);
                 }
                 break;
                 case _return:
@@ -214,6 +277,18 @@ public class MiniJVM {
 
         public Object popFromOperandStack() {
             return operandStack.pop();
+        }
+
+        public Object[] getLocalVariables() {
+            return localVariables;
+        }
+
+        public MethodInfo getMethodInfo() {
+            return methodInfo;
+        }
+
+        public void setCurrentInstructionIndex(int currentInstructionIndex) {
+            this.currentInstructionIndex = currentInstructionIndex;
         }
     }
 }
