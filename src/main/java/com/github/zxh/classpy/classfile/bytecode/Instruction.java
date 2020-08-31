@@ -41,8 +41,5 @@ public class Instruction extends ClassFilePart {
             reader.skipBytes(opcode.operandCount);
         }
     }
-    public int getOperand() {
-        return Integer.parseInt(getDesc().substring("iconst ".length()));
-    }
 
 }
