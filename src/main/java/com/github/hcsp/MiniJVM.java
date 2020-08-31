@@ -3,9 +3,7 @@ package com.github.hcsp;
 import com.github.zxh.classpy.classfile.ClassFile;
 import com.github.zxh.classpy.classfile.ClassFileParser;
 import com.github.zxh.classpy.classfile.MethodInfo;
-import com.github.zxh.classpy.classfile.bytecode.Bipush;
-import com.github.zxh.classpy.classfile.bytecode.Instruction;
-import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
+import com.github.zxh.classpy.classfile.bytecode.*;
 import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
@@ -27,7 +25,9 @@ public class MiniJVM {
     private String[] classPathEntries;
 
     public static void main(String[] args) {
-        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
+//        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
+//        new MiniJVM("target/classes", "com.github.hcsp.BranchClass").start();
+        new MiniJVM("target/classes", "com.github.hcsp.RecursiveClass").start();
     }
 
     /**
@@ -44,24 +44,28 @@ public class MiniJVM {
      * 启动并运行该虚拟机
      */
     public void start() {
+        //从classpath中加载要运行类的class文件
         ClassFile mainClassFile = loadClassFromClassPath(mainClass);
-
+        //从class文件中找到main方法
         MethodInfo methodInfo = mainClassFile.getMethod("main").get(0);
-
+        //创建方法栈
         Stack<StackFrame> methodStack = new Stack<>();
-
+        //创建局部变量表，将传递给main方法的参数依次放到局部变量表中
         Object[] localVariablesForMainStackFrame = new Object[methodInfo.getMaxStack()];
         localVariablesForMainStackFrame[0] = null;
-
+        //将main方法进栈
         methodStack.push(new StackFrame(localVariablesForMainStackFrame, methodInfo, mainClassFile));
-
+        //创建程序计数器
         PCRegister pcRegister = new PCRegister(methodStack);
 
         while (true) {
+            //从程序计数器中取出下一条指令
             Instruction instruction = pcRegister.getNextInstruction();
             if (instruction == null) {
+                //没有下一条指令，退出程序
                 break;
             }
+            //根据指令选择对应操作
             switch (instruction.getOpcode()) {
                 case getstatic: {
                     int fieldIndex = InstructionCp2.class.cast(instruction).getTargetFieldIndex();
@@ -86,9 +90,11 @@ public class MiniJVM {
                     String methodName = getMethodNameFromInvokeInstruction(instruction, pcRegister.getTopFrameClassConstantPool());
                     ClassFile classFile = loadClassFromClassPath(className);
                     MethodInfo targetMethodInfo = classFile.getMethod(methodName).get(0);
-
-                    Object[] localVariables = new Object[targetMethodInfo.getMaxLocals()];
-
+                    int length = targetMethodInfo.getMaxLocals();
+                    Object[] localVariables = new Object[length];
+                    for (int i = length - 1; i >= 0; i--) {
+                        localVariables[i] = pcRegister.getTopFrame().popFromOperandStack();
+                    }
                     // TODO 应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
                     StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo, classFile);
                     methodStack.push(newFrame);
@@ -99,10 +105,62 @@ public class MiniJVM {
                     pcRegister.getTopFrame().pushObjectToOperandStack(bipush.getOperand());
                 }
                 break;
+                case sipush: {
+                    Sipush sipush = (Sipush) instruction;
+                    pcRegister.getTopFrame().pushObjectToOperandStack(sipush.getOperand());
+
+                }
+                break;
                 case ireturn: {
                     Object returnValue = pcRegister.getTopFrame().popFromOperandStack();
                     pcRegister.popFrameFromMethodStack();
                     pcRegister.getTopFrame().pushObjectToOperandStack(returnValue);
+                }
+                break;
+                case iload_0: {
+                    Object obj = pcRegister.getTopFrame().localVariables[0];
+                    if (obj instanceof Integer) {
+                        pcRegister.getTopFrame().pushObjectToOperandStack(obj);
+                    } else {
+                        throw new IllegalArgumentException(obj + " is not int type");
+                    }
+
+                }
+                break;
+                case iconst_1:
+                case iconst_2:
+                case iconst_3:
+                case iconst_4:
+                case iconst_5: {
+                    int num = instruction.getOperand();
+                    pcRegister.getTopFrame().pushObjectToOperandStack(num);
+                }
+                break;
+                case irem: {
+                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
+                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
+                    int result = value1 - (value1 / value2) * value2;
+                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
+                }
+                break;
+                case isub: {
+                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
+                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
+                    int result = value1 - value2;
+                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
+                }
+                break;
+                case imul: {
+                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
+                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
+                    int result = value1 * value2;
+                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
+                }
+                break;
+                case ifne: {
+                    if ((int) pcRegister.getTopFrame().popFromOperandStack() != 0) {
+                        pcRegister.getTopFrame().offsetNextInstruction(2);
+                    }
                 }
                 break;
                 case invokevirtual: {
@@ -131,6 +189,8 @@ public class MiniJVM {
         ConstantMethodrefInfo methodrefInfo = constantPool.getMethodrefInfo(methodIndex);
         ConstantClassInfo classInfo = methodrefInfo.getClassInfo(constantPool);
         return constantPool.getUtf8String(classInfo.getNameIndex());
+
+
     }
 
     private String getMethodNameFromInvokeInstruction(Instruction instruction, ConstantPool constantPool) {
@@ -186,12 +246,19 @@ public class MiniJVM {
         }
     }
 
+    /**
+     * 栈针
+     */
     static class StackFrame {
+        //局部变量表
         Object[] localVariables;
+        //操作树栈
         Stack<Object> operandStack = new Stack<>();
+        //方法信息
         MethodInfo methodInfo;
+        //类的字节码文件
         ClassFile classFile;
-
+        //当前指令执行在哪一行
         int currentInstructionIndex;
 
         public Instruction getNextInstruction() {
@@ -208,12 +275,18 @@ public class MiniJVM {
             this.classFile = classFile;
         }
 
+        //进栈
         public void pushObjectToOperandStack(Object object) {
             operandStack.push(object);
         }
 
+        //出栈
         public Object popFromOperandStack() {
             return operandStack.pop();
+        }
+
+        public void offsetNextInstruction(int offset) {
+            currentInstructionIndex += offset;
         }
     }
 }
