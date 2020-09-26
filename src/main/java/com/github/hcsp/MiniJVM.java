@@ -6,12 +6,15 @@ import com.github.zxh.classpy.classfile.MethodInfo;
 import com.github.zxh.classpy.classfile.bytecode.Bipush;
 import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
-import com.github.zxh.classpy.classfile.constant.*;
+import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
+import com.github.zxh.classpy.classfile.constant.ConstantPool;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.List;
 import java.util.Objects;
 import java.util.Stack;
 import java.util.stream.Stream;
@@ -24,7 +27,7 @@ public class MiniJVM {
     private String[] classPathEntries;
 
     public static void main(String[] args) {
-        new MiniJVM("target/classes", "com.github.hcsp.BranchClass").start();
+        new MiniJVM("target/classes", "com.github.hcsp.SimpleClass").start();
     }
 
     /**
@@ -84,14 +87,9 @@ public class MiniJVM {
                     ClassFile classFile = loadClassFromClassPath(className);
                     MethodInfo targetMethodInfo = classFile.getMethod(methodName).get(0);
 
-                    //应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
                     Object[] localVariables = new Object[targetMethodInfo.getMaxLocals()];
-                    if (targetMethodInfo.getMaxLocals() > 0) {
-                        for (int i = 0; i < targetMethodInfo.getMaxLocals(); i++) {
-                            //把栈顶的栈桢，从操作数栈上弹出对应数量的参数，添加到新栈桢里的局部变量表
-                            localVariables[i] = pcRegister.getTopFrame().popFromOperandStack();
-                        }
-                    }
+
+                    // TODO 应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
                     StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo, classFile);
                     methodStack.push(newFrame);
                 }
@@ -117,73 +115,6 @@ public class MiniJVM {
                     } else {
                         throw new IllegalStateException("Not implemented yet!");
                     }
-                }
-                break;
-                case iload_0: {  //从当前栈桢局部变量表中0号位置得到int类型数据，加载到操作数栈
-                    Object intValue = pcRegister.getTopFrame().getLocalVariables()[0];
-                    pcRegister.getTopFrame().pushObjectToOperandStack(intValue);
-                }
-                break;
-                case iconst_1: {//把常量1添加到操作数栈
-                    pcRegister.getTopFrame().pushObjectToOperandStack(1);
-                }
-                break;
-                case iconst_2: { //把常量2添加到操作数栈
-                    pcRegister.getTopFrame().pushObjectToOperandStack(2);
-                }
-                break;
-                case iconst_3: { //把常量3添加到操作数栈
-                    pcRegister.getTopFrame().pushObjectToOperandStack(3);
-                }
-                break;
-                case iconst_4: { //把常量4添加到操作数栈
-                    pcRegister.getTopFrame().pushObjectToOperandStack(4);
-                }
-                break;
-                case iconst_5: { //把常量5添加到操作数栈
-                    pcRegister.getTopFrame().pushObjectToOperandStack(5);
-                }
-                break;
-                case irem: { //value1和value2都必须是int类型。这些值是从操作数堆栈中弹出的。int结果是value1-（value1/value2）*value2。结果被推送到操作数堆栈上。
-                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int result = value1 - (value1 / value2) * value2;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
-                }
-                break;
-                case ifne: { //当且仅当值≠0时，ifne成功
-                    int value = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    if (value != 0) {
-                        //得到当前栈桢里执行的指令
-                        List<Instruction> stackInstructionList = pcRegister.getTopFrame().getMethodInfo().getCode();
-                        //从instruction.getDesc获取到欲调转的指令号,使用空格进行分割
-                        int pc = Integer.valueOf(instruction.getDesc().split(" ")[1]);
-                        for (int i = 0; i < stackInstructionList.size(); i++) {
-                            if (pc == stackInstructionList.get(i).getPc()) {
-                                pcRegister.getTopFrame().setCurrentInstructionIndex(i);
-                                break;
-                            }
-                        }
-                    }
-                }
-                break;
-                case sipush: { //立即无符号字节1和字节2的值被组合成一个中间短字节，其中短字节的值为（字节1<<8）|字节2。然后将中间值符号扩展为整型值。该值被推送到操作数堆栈上。
-                    Integer returnValue = Integer.valueOf(instruction.getDesc().split(" ")[1]);
-                    pcRegister.getTopFrame().pushObjectToOperandStack(returnValue);
-                }
-                break;
-                case isub: { //value1和value2都必须是int类型。这些值是从操作数堆栈中弹出的。int结果是value1-value2。结果被推送到操作数堆栈上。
-                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int result = value1 - value2;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
-                }
-                break;
-                case imul:{ //value1和value2都必须是int类型。这些值来自操作数堆栈。int结果是value1*value2。结果被推送到操作数堆栈上。
-                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int result = value1 * value2;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
                 }
                 break;
                 case _return:
@@ -283,45 +214,6 @@ public class MiniJVM {
 
         public Object popFromOperandStack() {
             return operandStack.pop();
-        }
-
-        /**
-         * get set
-         */
-        public Object[] getLocalVariables() {
-            return localVariables;
-        }
-
-        public void setLocalVariables(Object[] localVariables) {
-            this.localVariables = localVariables;
-        }
-
-        public Stack<Object> getOperandStack() {
-            return operandStack;
-        }
-
-        public void setOperandStack(Stack<Object> operandStack) {
-            this.operandStack = operandStack;
-        }
-
-        public MethodInfo getMethodInfo() {
-            return methodInfo;
-        }
-
-        public void setMethodInfo(MethodInfo methodInfo) {
-            this.methodInfo = methodInfo;
-        }
-
-        public void setClassFile(ClassFile classFile) {
-            this.classFile = classFile;
-        }
-
-        public int getCurrentInstructionIndex() {
-            return currentInstructionIndex;
-        }
-
-        public void setCurrentInstructionIndex(int currentInstructionIndex) {
-            this.currentInstructionIndex = currentInstructionIndex;
         }
     }
 }
