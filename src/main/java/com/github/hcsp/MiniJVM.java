@@ -6,14 +6,11 @@ import com.github.zxh.classpy.classfile.MethodInfo;
 import com.github.zxh.classpy.classfile.bytecode.Bipush;
 import com.github.zxh.classpy.classfile.bytecode.Instruction;
 import com.github.zxh.classpy.classfile.bytecode.InstructionCp2;
-import com.github.zxh.classpy.classfile.bytecode.Sipush;
 import com.github.zxh.classpy.classfile.constant.ConstantClassInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantFieldrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantMethodrefInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantNameAndTypeInfo;
 import com.github.zxh.classpy.classfile.constant.ConstantPool;
-import com.github.zxh.classpy.classfile.datatype.Table;
-import com.github.zxh.classpy.classfile.descriptor.MethodDescriptor;
 
 import java.io.File;
 import java.io.IOException;
@@ -93,10 +90,6 @@ public class MiniJVM {
                     Object[] localVariables = new Object[targetMethodInfo.getMaxLocals()];
 
                     // TODO 应该分析方法的参数，从操作数栈上弹出对应数量的参数放在新栈帧的局部变量表中
-                    final MethodDescriptor methodDescriptor = targetMethodInfo.getMethodDescriptor(classFile.getConstantPool());
-                    for (int i = 0; i < methodDescriptor.getParamTypes().size(); i++) {
-                        localVariables[methodDescriptor.getParamTypes().size()-i-1] =  pcRegister.getTopFrame().popFromOperandStack();
-                    }
                     StackFrame newFrame = new StackFrame(localVariables, targetMethodInfo, classFile);
                     methodStack.push(newFrame);
                 }
@@ -127,53 +120,6 @@ public class MiniJVM {
                 case _return:
                     pcRegister.popFrameFromMethodStack();
                     break;
-                case iload_0:
-                    // 从局部变量表加载到操作数栈
-                    StackFrame topFrame = pcRegister.getTopFrame();
-                    topFrame.pushObjectToOperandStack(topFrame.localVariables[0]);
-                    break;
-                case iconst_1:
-                case iconst_2:
-                case iconst_3:
-                case iconst_4:
-                case iconst_5: {
-                    int num = instruction.getOperand();
-                    pcRegister.getTopFrame().pushObjectToOperandStack(num);
-                }
-                break;
-                case isub: {
-                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int result = value1 - value2;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
-                }
-                break;
-                case imul: {
-                    int value2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int value1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int result = value1 * value2;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(result);
-                }
-                break;
-                case irem:
-                    // 从操作数栈弹出值，取余后将结果压入栈
-                    int o1 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    int o2 = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    pcRegister.getTopFrame().pushObjectToOperandStack(o1 % o2);
-                    break;
-                case ifne:
-                    // 从操作数栈中弹出一个值，与0比较
-                    int i = (int) pcRegister.getTopFrame().popFromOperandStack();
-                    if (i != 0) {
-                        pcRegister.getTopFrame().getNextInstruction();
-                        pcRegister.getTopFrame().getNextInstruction();
-                    }
-                    break;
-                case sipush: {
-                    Sipush sipush = (Sipush) instruction;
-                    pcRegister.getTopFrame().pushObjectToOperandStack(sipush.getOperand());
-                }
-                break;
                 default:
                     throw new IllegalStateException("Opcode " + instruction + " not implemented yet!");
             }
