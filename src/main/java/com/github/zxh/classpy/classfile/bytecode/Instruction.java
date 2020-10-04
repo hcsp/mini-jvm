@@ -35,6 +35,10 @@ public class Instruction extends ClassFilePart {
             readOperands(reader);
         }
     }
+
+    public int getOperand() {
+        return Integer.parseInt(getDesc().substring("iconst ".length()));
+    }
     
     protected void readOperands(ClassFileReader reader) {
         if (opcode.operandCount > 0) {
